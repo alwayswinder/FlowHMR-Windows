@@ -1,5 +1,8 @@
 # Third-party components in the Windows bundle
 
+- The Biped BVH exporter adapts Character Studio naming and Euler continuity from RGB MoCap's `mocap/biped_bvh.py` and `mocap/source_bvh.py`, copyright 2026 RGB MoCap contributors, under the [MIT license](_MyTools/licenses/RGBMocap.txt).
+- Direct BIP export uses the author-written `BsRetargetTools.ms` and `Mixamo-Standard.list` from [BsKeyTools v1.4.3](https://github.com/AniBullet/BsKeyTools/tree/v1.4.3), under the [MIT license](_MyTools/export/max/LICENSE).
+
 - The original FlowHMR project retains its [license](LICENSE). The inference submodules and HaMeR inference code retain the license files included in their respective `third_party` directories. The included DINOv3 code is covered by `third_party/dinov3/LICENSE.md`. The staged SAM loader points to this local copy and reads MHR from a Python file handle for non-ASCII Windows paths. Model weights and licensed body/hand data are supplied separately.
 - CPython's license is in `runtime/LICENSE.txt`, and bundled Python package notices remain in `runtime/Lib/site-packages`. The Runtime Environment page downloads the official PyTorch and TorchVision wheels, with their notices retained under `runtime/environments`. This bundle does not include an NVIDIA display driver.
 - The unmodified Microsoft WebView2 Evergreen Standalone Installer and Microsoft Visual C++ Redistributable in `runtime/prerequisites` are provided under Microsoft's terms. See the [WebView2 distribution guide](https://learn.microsoft.com/microsoft-edge/webview2/concepts/distribution) and the [Visual C++ redistributable documentation](https://learn.microsoft.com/cpp/windows/latest-supported-vc-redist).

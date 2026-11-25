@@ -9,6 +9,9 @@
 | MetaHuman FBX | 按当前 MetaHuman 角色导出身体和手指动作 | 先在「角色」中应用 MetaHuman 身体 FBX，每次导出一人的骨骼动画 |
 | 当前角色 FBX | 将普通自定义 FBX 或已识别的 FBX 角色带回动画软件 | 保留原骨架及保存的重定向和校正；可选蒙皮。多人场景一次选一人，保留站位和入场时间 |
 | Maya AdvancedSkeleton FBX | Maya 的 AdvancedSkeleton 动作库 | 导出一人的动画骨架，第 −1 帧为 T Pose |
+| 3ds Max Biped (.bip) | 在 FlowHMR 内预览 Biped 骨架并直接下载动作 | Windows 本机单人 30 FPS 任务，需要已授权的 3ds Max。已验证 2026.3 |
+| Biped 骨骼＋动画 (.max，可直接拖入) | 在空白 Max 中直接查看骨架动画，或合并到已有场景 | 包含与 BIP 对应的 Biped 骨架和完整动画，共用转换缓存；需要本机 3ds Max |
+| BIP 专用 BVH（3ds Max） | 在 Max 中导入 Biped，再保存 BIP 动作 | 52 关节，默认校准手腕朝向和指骨扭转；Max 2026.3 验证。米单位、Y 轴向上；可加首帧 T Pose，多人打包 ZIP |
 | MMD VMD | 给 MMD 人形角色播放动作 | 选用当前预览 PMX 或通用骨架；已应用角色的关节校正、根骨调整和脚部 IK／FK 可随通用骨架导出。30 FPS，多人分别写入 VMD 再打成 ZIP |
 | VRM Animation (.vrma) | 给支持 VRM Animation 的应用提供通用人形动作 | 保留源帧率、身体、手指和根骨位移。多人时保留各自的时间和站位，每人一个 VRMA，打包成 ZIP |
 | VRM 角色 GLB | 将自定义重定向的 VRM 角色和动画导入支持 glTF 的软件 | 保留当前匹配、校正和蒙皮；FBX 角色用「当前角色 FBX」 |
@@ -70,3 +73,37 @@ PMX 的「自动重心」优先选择可用的「センター」，其次是「�
 导出按当前角色的 VMD 时，把文件导入同一个 PMX。程序沿目标骨架的父子关系重定向腰背和肩膀，并按角色的手臂、腿长重算手腕和脚踝的位置。通用骨架使用标准 MMD 骨名；如果接收模型的比例或鞋底高度不同，贴地效果可能会有变化。VMD 只含动作，不含网格、贴图或参考姿势。部分旧版 MMD Tools 需先在模型上开启 **Property Drivers（属性驱动）**，导入的 IK 和显示关键帧才会生效。
 
 PMX 预览面向常见人形骨架，例如原神及 Tda 式模型；表情与衣物物理不由动捕驱动，特殊蒙皮在预览中可能近似。改过骨名或使用特殊控制器的模型，建议先用短片段检查预览和 VMD 回读效果。
+
+
+## 3ds Max Biped → BIP
+
+Windows 本机完成单人任务后，在「导出动作」选择 **3ds Max Biped (.bip)**。「预览 Biped」在当前时间轴显示骨架，「导出」保存同一份 BIP。首次转换需要等待 3ds Max 批处理启动，之后预览和下载共用缓存。使用非标准安装位置时，可在启动 FlowHMR 前将 `FLOWHMR_3DSMAX_BATCH` 设置为 `3dsmaxbatch.exe` 的完整路径。
+
+在 BVH 或 BIP 格式下勾选 **导出为 3ds Max 场景 (.max)**，即可下载对应路线的 Biped 骨架与动画。BVH 路线通过 Character Studio 导入，保留 T Pose 选项，多人仍按角色打包 ZIP。BIP 路线使用 Mixamo 重定向，场景文件和网页预览来自同一次 BIP 回读。将 `.max` 拖入 Max 视口后可选择「打开」或「合并」。合并到已有工程时，按需扩展目标时间轴的播放范围。
+
+直接导出按源 SMPL-H 动作建立标准 Biped，校正膝盖朝向并估计整体地面偏移。预览使用 Max 重新加载 BIP 后的骨架取样。团队自定义 Biped 的贴地和锁脚需单独验收。
+
+在「导出动作」选择 **BIP 专用 BVH（3ds Max）**，按需勾选「在动作前添加一帧 T Pose」。
+使用五指、每指三节的 Biped，从 **Motion → Motion Capture → Load Motion Capture File** 载入，
+再用 Biped 的 **Save File** 保存 `.bip`。已在本机 Max 2026.3（28.3.0.30732）验证。
+[Autodesk BVH 导入说明](https://download.autodesk.com/global/docs/motionbuilder2014/en_us/files/Importing_Importing_.bvh_files_into_3ds_Max.htm)
+
+骨名沿用 Character Studio 的约定，旋转通道为 ZXY。导出器默认按源手掌和各节指骨的参考方向，
+校准 Biped 的手腕参考朝向、左右手、拇指及指骨旋转规则，并沿用目标指骨的参考扭转。这个入口只输出供 Biped 生成 BIP 的 BVH：
+手指通道已经预先补偿，不应作为通用 BVH 在其他软件中解释。原始 NPZ 数据不变。
+旧的 BVH 缓存会自动失效（现为 v3，包含手腕与指骨扭转修复），重新导出即可获得校准版本，不需要重新推理。
+预览角色上的手工校正不写入，导出仍以源 SMPL-H 动作为准。
+
+BVH 没有单位元数据；此配置使用米，导入时确认 Biped 身高和位移尺度。在厘米数值流程中，
+需将 OFFSET 和根位置数值统一乘 100。仍需检查肘膝弯曲、根位移和贴地；手部校准不会修正其他身体重定向。Biped 的掌宽、指根位置和各节长度仍由目标手型决定，指尖位置不保证与源手型重合。
+
+勾选 T Pose 会增加第 0 帧，原动作整体后移一帧，保留全部原始动作。
+多人导出每人一个 BVH 并打包 ZIP；入场前保持第一帧姿势以保留各人的时间和站位。
+BVH 不支持可见性，隐藏区间保持最近有效姿势。
+
+修复验证覆盖用户提供的 693 帧动作、另一段 151 帧动作及其 152 帧 T Pose 版本，
+均实际通过 Max 导入、手掌世界朝向、全 30 节指骨完整世界旋转的逐帧比较，以及 BIP 保存和回读。
+这三项检查中，手掌朝向和完整指骨旋转的最大误差均小于 0.001°。
+另有原生静置手型回归，防止额外的 180° 指骨扭转；原先只比较掌内骨段方向的检查不足以发现这两类问题。
+单轴响应参考样本及随机动作回归见 [Biped 导出测试](../_MyTools/tests/test_bvh_export.py) 和 [测量数据](../_MyTools/tests/fixtures/biped_2026_finger_probes.json)。
+其他 Max 版本及修改过参考手型的 Biped 尚未验收。

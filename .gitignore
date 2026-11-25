@@ -35,6 +35,9 @@ __pycache__/
 *.pth
 *.pt
 *.fbx
+*.bvh
+*.bip
+*.max
 *.pkl
 *.npz
 *.safetensors

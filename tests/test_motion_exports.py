@@ -88,6 +88,88 @@ class MotionExportsTest(unittest.TestCase):
             code, _, _, error = self.request("GET", "/api/jobs/group/vmd?person=99")
             self.assertEqual((code, error["error_code"]), (400, "scene_people"))
 
+    def test_biped_preview_and_both_downloads_share_one_local_conversion(self):
+        executable = self.root / '3dsmaxbatch.exe'
+        executable.write_bytes(b'max')
+
+        def convert(motion, output, preview, scene, **options):
+            self.assertEqual(len(motion['poses']), 3)
+            self.assertEqual(options['executable'], executable)
+            output.parent.mkdir(exist_ok=True)
+            output.write_bytes(b'BIP fixture')
+            preview.write_text('{"frames":3}', encoding='utf-8')
+            scene.write_bytes(b'MAX fixture')
+
+        with (patch.object(server, 'fbx_export_available', return_value=True),
+              patch.object(server, 'model_path', return_value=self.reference),
+              patch('_MyTools.export.bip.max_batch_path', return_value=executable),
+              patch('_MyTools.export.bip.export_bip', side_effect=convert) as export):
+            status, _, _, data = self.request('GET', '/api/jobs/single/bip-preview')
+            self.assertEqual((status, data), (200, {'frames': 3}))
+            status, headers, body, _ = self.request('GET', '/api/jobs/single/bip')
+            self.assertEqual((status, body), (200, b'BIP fixture'))
+            self.assertIn('sample_biped.bip', headers['Content-Disposition'])
+            status, headers, body, _ = self.request('GET', '/api/jobs/single/bip?format=max')
+            self.assertEqual((status, body), (200, b'MAX fixture'))
+            self.assertIn('sample_biped.max', headers['Content-Disposition'])
+            self.assertEqual(self.request('GET', '/api/jobs/group/bip')[0], 409)
+            self.assertEqual(self.request('GET', '/api/jobs/single/bip', base_url='http://example.com')[0], 403)
+            export.assert_called_once()
+
+    def test_bvh_max_uses_character_studio_export_with_the_selected_options(self):
+        executable = self.root / '3dsmaxbatch.exe'
+        executable.touch()
+
+        def write(motion, path, *, start_frame, prepend_tpose, **options):
+            self.assertEqual(options['executable'], executable)
+            Path(path).write_bytes(f'BVH MAX:{start_frame}:{prepend_tpose}'.encode())
+
+        with (patch.object(server, 'model_path', return_value=self.reference),
+              patch('_MyTools.export.bip.max_batch_path', return_value=executable),
+              patch('_MyTools.export.bip.export_bvh_scene', side_effect=write) as export):
+            url = '/api/jobs/single/bvh?format=max&prepend_tpose=1'
+            for _ in range(2):
+                code, headers, body, _ = self.request('GET', url)
+                self.assertEqual((code, body), (200, b'BVH MAX:0:True'))
+                self.assertIn('sample_biped_bvh.max', headers['Content-Disposition'])
+            export.assert_called_once()
+            self.assertEqual(self.request('GET', url, base_url='http://example.com')[0], 403)
+            code, headers, body, _ = self.request('GET', '/api/jobs/group/bvh?format=max')
+            self.assertEqual(code, 200)
+            self.assertIn('duet_biped_bvh_max_scene.zip', headers['Content-Disposition'])
+            with ZipFile(BytesIO(body)) as archive:
+                self.assertEqual(archive.namelist(), ['person_01.max', 'person_02.max'])
+                self.assertEqual(archive.read('person_02.max'), b'BVH MAX:7:False')
+
+    def test_bvh_selection_options_archives_and_cache_are_independent(self):
+        calls = []
+
+        def write(motion, path, **options):
+            calls.append(options)
+            Path(path).write_bytes(f"BVH:{options['start_frame']}:{options['prepend_tpose']}".encode())
+
+        with (patch.object(server, 'model_path', return_value=self.reference),
+              patch('_MyTools.export.bvh.export_bvh', side_effect=write)):
+            for option in ('0', '0', '1'):
+                code, headers, data, _ = self.request('GET', '/api/jobs/single/bvh?prepend_tpose=' + option)
+                self.assertEqual(code, 200)
+                self.assertIn('sample_biped_bvh.bvh', headers['Content-Disposition'])
+                self.assertEqual(data, f'BVH:0:{option == "1"}'.encode())
+            self.assertEqual(len(calls), 2)
+            code, headers, data, _ = self.request('GET', '/api/jobs/group/bvh')
+            self.assertEqual((code, headers['Content-Type']), (200, 'application/zip'))
+            with ZipFile(BytesIO(data)) as archive:
+                self.assertEqual(archive.namelist(), ['person_01.bvh', 'person_02.bvh'])
+                self.assertEqual(archive.read('person_02.bvh'), b'BVH:7:False')
+            code, headers, data, _ = self.request('GET', '/api/jobs/group/bvh?person=2')
+            self.assertEqual(code, 200)
+            self.assertIn('duet_biped_bvh_person2.bvh', headers['Content-Disposition'])
+            self.assertEqual(data, b'BVH:7:False')
+            code, _, _, error = self.request('GET', '/api/jobs/group/bvh?person=99')
+            self.assertEqual((code, error['error_code']), (400, 'scene_people'))
+            code, _, _, error = self.request('GET', '/api/jobs/single/bvh?prepend_tpose=2')
+            self.assertEqual((code, error['error_code']), (400, 'bvh_options'))
+
     def test_metahuman_validates_template_and_selection_before_export(self):
         query = "?profile=metahuman&mesh=0"
         base = "/api/jobs/single/fbx" + query

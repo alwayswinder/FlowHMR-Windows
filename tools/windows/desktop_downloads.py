@@ -8,7 +8,8 @@ from urllib.parse import urlsplit
 import winreg
 
 
-_EXPORT_TYPES = {"fbx": {".fbx"}, "vmd": {".vmd", ".zip"}, "vrma": {".vrma", ".zip"}}
+_EXPORT_TYPES = {"fbx": {".fbx"}, "vmd": {".vmd", ".zip"}, "vrma": {".vrma", ".zip"},
+                 "bvh": {".bvh", ".max", ".zip"}, "bip": {".bip", ".max"}, "max": {".max"}}
 
 
 def _export_extension(uri, filename, port):
@@ -18,11 +19,12 @@ def _export_extension(uri, filename, port):
     if (url.scheme, url.netloc) != ("http", f"127.0.0.1:{port}"):
         return None
     if blob:
-        if extension in (".fbx", ".vmd") or filename.lower().endswith("_pmx_vmd.zip"):
+        if (extension in (".fbx", ".vmd", ".bvh", ".bip", ".max") or filename.lower().endswith("_pmx_vmd.zip")
+                or re.search(r"_biped_bvh(?:_max)?_scene(?:_\d+people_[0-9a-f]+)?\.zip$", filename.lower())):
             return extension
         return None
-    match = re.fullmatch(r"/api/jobs/[^/]+/(fbx|vmd|vrma)", url.path)
-    return extension if match and extension in _EXPORT_TYPES[match[1]] else None
+    match = re.fullmatch(r"/api/jobs/[^/]+/([^/]+)", url.path)
+    return extension if match and extension in _EXPORT_TYPES.get(match[1], ()) else None
 
 
 def _initial_directory(preference):

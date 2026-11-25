@@ -55,7 +55,7 @@ from flowhmr.core.bodymodels.body_variants import available_variants, model_path
 from flowhmr.model_files import (
     FLOWHMR_BASE_FILES, HAMER_FILES, MODEL_ROOT, SAM3D_FILES, VGGT, SMPLH_FILES, core_model_paths,
     ensure_model_folders, flowhmr_base_paths, flowhmr_paths, missing_model_paths,
-    resolve_model, smplh_reference, torso_optimization_available,
+    resolve_model, smplh_available, smplh_reference, torso_optimization_available,
 )
 from flowhmr import model_integrity
 from flowhmr.character_files import CharacterFiles, KEY_ENV as CHARACTER_KEY_ENV, MAX_MODEL_BYTES
@@ -1529,6 +1529,11 @@ def static_files(path):
     return send_from_directory(os.path.join(WEB_DIR, "static"), path, conditional=False)
 
 
+@app.get("/static/js/bip-preview.js")
+def biped_preview_script():
+    return send_from_directory(Path(REPO_ROOT) / "_MyTools/web", "bip-preview.js", conditional=False)
+
+
 def local_model_request():
     try:
         hostname = urlsplit("//" + request.host).hostname
@@ -2342,7 +2347,12 @@ def api_job(job_id):
         motion = os.path.join(job_dir(job_id), "scene" if scene else "", "motion.npz")
         job["has_vmd"] = os.path.isfile(motion)
         job["has_vrma"] = job["has_vmd"]
+        job["has_bvh"] = job["has_vmd"] and smplh_available(job_body_reference(job))
         job["has_fbx"] = job["has_vmd"] and fbx_export_available(job_body_reference(job))
+        from _MyTools.export.bip import max_batch_path
+        max_available = (job["has_bvh"] or job["has_fbx"]) and local_model_request() and max_batch_path()
+        job["has_bvh_max"] = bool(job["has_bvh"] and max_available)
+        job["has_bip"] = bool(not scene and job["has_fbx"] and max_available)
         camera_status = CAMERA_TASKS.status(job_id)
         job.update(camera_state=camera_status['camera_state'], camera_available=camera_status['available'],
                    camera_revision=camera_status['revision'], camera_quality=camera_status['quality'],
@@ -2932,6 +2942,75 @@ def api_vmd(job_id):
         app.logger.warning("VMD export failed for job %s: %s", job_id, error)
         return api_error("motion_export_failed", "无法导出动作。", 422, detail=str(error)[:300])
     return send_humanoid_motion(path, job, available, chosen, signature, "vmd", extension)
+
+
+@app.get("/api/jobs/<job_id>/bvh")
+def api_bvh(job_id):
+    from _MyTools.web.exports import cached_bvh
+
+    job, source, available = motion_export_source(job_id)
+    prepend = request.args.get("prepend_tpose", "0")
+    output_format = request.args.get("format", "bvh")
+    if prepend not in ("0", "1") or output_format not in ("bvh", "max"):
+        return api_error("bvh_options", "请选择有效的 BVH 导出选项。", 400)
+    executable = None
+    if output_format == "max":
+        from _MyTools.export.bip import max_batch_path
+
+        if not local_model_request() or request.headers.get("Sec-Fetch-Site") == "cross-site":
+            abort(403)
+        executable = max_batch_path()
+        if executable is None:
+            return api_error("bvh_max_unavailable", "BVH 场景导出需要本机 3ds Max。", 409)
+    try:
+        chosen, signature = select_export_people(available)
+    except UserMessage as error:
+        return api_error(error.code, str(error), 400, **error.params)
+    references = {}
+    for person in chosen if chosen is not None else (None,):
+        number = person["person"] if person else None
+        reference = person.get("body_reference") if person else None
+        if not isinstance(reference, str) or reference not in SMPLH_FILES:
+            reference = job_body_reference(job)
+        try:
+            references[number] = model_path(reference)
+        except ValueError:
+            error = missing_body_reference(reference)
+            return api_error(error.code, str(error), 409, **error.params)
+    try:
+        path, extension = cached_bvh(source, chosen, signature, references, prepend, output_format,
+                                     executable, file_stamp, write_humanoid_motion)
+    except (OSError, ValueError, KeyError, TypeError, RuntimeError, BadZipFile) as error:
+        app.logger.warning("BVH export failed for job %s: %s", job_id, error)
+        return api_error("motion_export_failed", "无法导出动作。", 422, detail=str(error)[:300])
+    return send_humanoid_motion(path, job, available, chosen, signature,
+                                "biped_bvh_max" if executable and extension == "zip" else "biped_bvh", extension)
+
+
+@app.get("/api/jobs/<job_id>/bip")
+@app.get("/api/jobs/<job_id>/bip-preview")
+@app.get("/api/jobs/<job_id>/max")
+def api_bip(job_id):
+    if not local_model_request() or request.headers.get("Sec-Fetch-Site") == "cross-site":
+        abort(403)
+    job, source, people = motion_export_source(job_id)
+    from _MyTools.export.bip import max_batch_path
+    from _MyTools.web.exports import cached_bip
+
+    executable = max_batch_path()
+    if people is not None or executable is None or not fbx_export_available(job_body_reference(job)):
+        return api_error('bip_unavailable', 'BIP 需要本机 3ds Max 和单人动作。', 409)
+    reference = model_path(job_body_reference(job))
+    try:
+        path, preview, scene = cached_bip(source, reference, executable, file_stamp)
+    except (OSError, ValueError, KeyError, RuntimeError) as error:
+        app.logger.warning('BIP export failed for job %s: %s', job_id, error)
+        return api_error('bip_failed', '3ds Max BIP 转换失败。', 422, detail=str(error)[:300])
+    if request.path.endswith('/bip-preview'):
+        return send_file(preview, mimetype='application/json', conditional=True)
+    if request.path.endswith('/max') or request.args.get('format') == 'max':
+        return send_humanoid_motion(scene, job, None, None, '', 'biped', 'max')
+    return send_humanoid_motion(path, job, None, None, '', 'biped', 'bip')
 
 
 @app.get("/api/jobs/<job_id>/vrma")

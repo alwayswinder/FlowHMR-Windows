@@ -1,0 +1,3 @@
+# Preserve the vendored BsKeyTools source and its original whitespace.
+/_MyTools/export/max/BsRetargetTools.ms -text -whitespace
+/_MyTools/export/max/Mixamo-Standard.list -text

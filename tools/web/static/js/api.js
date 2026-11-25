@@ -169,7 +169,18 @@ export const exportCamera = (id, format, transform, signal) => request(`/api/job
 }).then((response) => response.arrayBuffer());
 export const getMotionDownload = (url, signal) => request(url, { signal }).then(async (response) => ({
   bytes: new Uint8Array(await response.arrayBuffer()), type: response.headers.get('Content-Type'),
+  filename: downloadFilename(response, 'motion'),
 }));
+export const getBipPreview = (id, signal) => request(`/api/jobs/${id}/bip-preview`, { signal }).then(response => response.json());
+
+function downloadFilename(response, fallback) {
+  const header = response.headers.get('Content-Disposition') ?? '';
+  const encoded = /filename\*=UTF-8''([^;]+)/i.exec(header)?.[1];
+  if (encoded) {
+    try { return decodeURIComponent(encoded); } catch { /* use the plain name */ }
+  }
+  return /filename="([^"]+)"|filename=([^;]+)/i.exec(header)?.slice(1).find(Boolean) ?? fallback;
+}
 
 export const videoUrl = (id, converted, annotated = false) => `/api/jobs/${id}/video?source=${annotated ? "annotated" : converted ? "preview" : "original"}`;
 export const npzUrl = (id) => `/api/jobs/${id}/npz`;
@@ -196,12 +207,7 @@ export async function exportTargetFbx(id, people, profile, actor, { paths, sampl
   const query = new URLSearchParams({ profile, mesh:withSkin ? "1" : "0" });
   for (const person of people) query.append("person", String(person));
   const response = await request(`/api/jobs/${id}/target-fbx?${query}`, { method: "POST", body, signal });
-  const header = response.headers.get("Content-Disposition") ?? "";
-  const encoded = /filename\*=UTF-8''([^;]+)/i.exec(header)?.[1];
-  let filename = /filename="([^"]+)"|filename=([^;]+)/i.exec(header)?.slice(1).find(Boolean) ?? `${profile}.fbx`;
-  if (encoded) {
-    try { filename = decodeURIComponent(encoded); } catch { /* use the plain name */ }
-  }
+  const filename = downloadFilename(response, `${profile}.fbx`);
   return { filename, blob: await response.blob() };
 }
 export const personThumbUrl = (id, i) => `/api/jobs/${id}/person/${i}.jpg`;

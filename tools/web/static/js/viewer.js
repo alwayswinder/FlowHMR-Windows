@@ -1,6 +1,7 @@
 // "Result" card: three.js viewer for the generated SMPL-H mesh sequence, playback controls
 // and synchronisation with the source video.
 import * as THREE from "three";
+import { createBipPreview } from "./bip-preview.js";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { $, show, personColor } from "./utils.js";
 import { appError, localize, message as m, setAttr, setText, t } from "./i18n.js";
@@ -484,7 +485,23 @@ export function initViewer(preview) {
     invalidate();
   };
 
+  let bipPreview = null;
+  function clearBipPreview() {
+    if (!bipPreview) return;
+    scene.remove(bipPreview.group);
+    bipPreview.dispose();
+    bipPreview = null;
+    show("bipPreviewBack", false);
+    labelBody();
+    syncGround();
+  }
+  $("bipPreviewBack").onclick = () => {
+    clearBipPreview();
+    syncSkeletonDisplay();
+  };
+
   function removeActors() {
+    clearBipPreview();
     character.releaseActors(actors);
     for (const actor of actors) {
       removeSkeleton(actor);
@@ -504,6 +521,11 @@ export function initViewer(preview) {
   }
 
   function syncGround() {
+    if (bipPreview) {
+      groundInput.disabled = true;
+      setGround(0);
+      return;
+    }
     groundInput.disabled = groundAuto.checked;
     if (groundAuto.checked) {
       const height = estimatedGround?.height_m ?? 0;
@@ -620,6 +642,16 @@ export function initViewer(preview) {
 
   function syncSkeletonDisplay() {
     syncCharacterLighting();
+    if (bipPreview) {
+      skeletonToggle.checked = true;
+      skinToggle.checked = false;
+      skeletonToggle.disabled = skinToggle.disabled = coneToggle.disabled = wireToggle.disabled = true;
+      shadowPlane.visible = false;
+      setText($("viewportMode"), m("view.skeleton_only"));
+      for (const actor of actors) drawActorFrame(actor, state.visualFrame);
+      invalidate();
+      return;
+    }
     const ready = actors.some((a) => a.skeleton);
     const only = ready && !showSkin;
     const visible = ready && (only || showSkeletonOverlay);
@@ -740,6 +772,11 @@ export function initViewer(preview) {
 
   function drawActorFrame(actor, globalFrame) {
     const { body, group, meta, verts } = actor;
+    if (bipPreview) {
+      group.visible = false;
+      bipPreview.draw(globalFrame);
+      return;
+    }
     const source = sourceStart(state.meta) + globalFrame;
     const { yaw, offset } = scenePlacement(actor.sceneTrack, source);
     if (group.rotation.y !== yaw) {
@@ -1138,6 +1175,10 @@ export function initViewer(preview) {
     return poseOffsets?.retarget ? target.manualBones??target.bones : target.bones;
   }
   function labelBody() {
+    if (bipPreview) {
+      setText($("viewportObject"), "3ds Max Biped");
+      return;
+    }
     const custom = sourceBodyPreview() ? 0 : actors.filter((actor) => actor.character).length;
     const asset = sourceBodyPreview() ? null : character.active;
     setText($("viewportObject"), () => [
@@ -1234,6 +1275,18 @@ export function initViewer(preview) {
   });
 
   return {
+    showBipPreview(jobId, data) {
+      if (state.jobId !== jobId || !state.meta || state.scene) return;
+      const next = createBipPreview(data, state.meta.num_frames, state.meta.fps);
+      if (sourceView) setProjection(orbitCamera);
+      clearBipPreview();
+      bipPreview = next;
+      scene.add(next.group);
+      show("bipPreviewBack", true);
+      labelBody();
+      syncSkeletonDisplay();
+      syncGround();
+    },
     controlPlayback(command) {
       if (!state.meta || state.frame < 0) return { error: 'No motion is loaded in this viewer.' };
       if (state.jobId !== command.job_id) return { error: 'The viewer is displaying a different job.' };

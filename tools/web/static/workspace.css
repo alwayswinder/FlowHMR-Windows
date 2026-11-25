@@ -612,7 +612,7 @@ body { height: 100dvh; }
 .viewer-tools input { accent-color: var(--accent); }
 .viewer-tools label { white-space: nowrap; }
 .viewer-tools label:has(input:disabled) { opacity: .55; cursor: default; }
-.viewer-tools .viewer-source-camera { padding: 2px 7px; border-radius: 4px; white-space: nowrap; }
+.viewer-tools :is(.viewer-source-camera, #bipPreviewBack) { padding: 2px 7px; border-radius: 4px; white-space: nowrap; }
 .viewer-tools .viewer-source-camera[aria-pressed="true"] { border-color: var(--accent); color: var(--text); }
 .viewer-hint, :root[data-theme="dark"] .viewer-hint { color: var(--muted); background: var(--editor-head); border-radius: 4px; }
 

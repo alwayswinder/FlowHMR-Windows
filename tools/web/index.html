@@ -442,6 +442,7 @@
         <label><input type="checkbox" id="optSync" checked> <span data-i18n="view.sync">同步视频</span></label>
         <label><input type="checkbox" id="optAudio" checked> <span data-i18n="view.audio">原声</span></label>
         <button type="button" class="btn-secondary small viewer-source-camera hidden" id="sourceCameraQuickView" aria-controls="viewer" aria-pressed="false" disabled data-i18n="view.source_camera">原片机位</button>
+        <button type="button" class="btn-secondary small hidden" id="bipPreviewBack" data-i18n="export.bip_back">返回原预览</button>
       </div>
     </div>
   </section>
@@ -652,10 +653,17 @@
         <option value="retarget_glb" data-i18n="retarget.glb">VRM 角色 GLB</option>
         <option value="vmd">MMD VMD</option>
         <option value="vrma">VRM Animation (.vrma)</option>
+        <option value="bvh" data-i18n="export.bvh">BIP 专用 BVH（3ds Max）</option>
+        <option value="bip" data-i18n="export.bip">3ds Max Biped (.bip)</option>
         <option value="npz">NPZ</option>
       </select>
     </label>
     <p class="setting-help export-format-hint" id="motionExportHint"></p>
+    <div id="bvhOptions" class="hidden">
+      <label class="fbx-export-skin"><input type="checkbox" id="bvhTpose"> <span data-i18n="export.bvh_tpose">在动作前添加一帧 T Pose</span></label>
+      <label class="fbx-export-skin"><input type="checkbox" id="bvhAsMax"> <span data-i18n="export.as_max">导出为 3ds Max 场景 (.max)</span></label>
+    </div>
+    <label class="fbx-export-skin hidden" id="bipMaxOption"><input type="checkbox" id="bipAsMax"> <span data-i18n="export.as_max">导出为 3ds Max 场景 (.max)</span></label>
     <div id="pairedCameraOptions">
       <label class="fbx-export-skin"><input type="checkbox" id="includeCamera"> <span data-i18n="export.include_camera">同时导出摄像机</span></label>
       <p class="setting-help" id="pairedCameraHint"></p>
@@ -696,6 +704,7 @@
     <p class="error hidden" id="motionExportError" role="alert"></p>
     <div class="fbx-export-actions">
       <button class="btn-secondary small" value="cancel" data-i18n="common.cancel">取消</button>
+      <button class="btn-secondary small hidden" id="previewBip" value="preview-bip" data-i18n="export.bip_preview">预览 Biped</button>
       <button class="btn-primary small" id="fbxConfirm" value="export" data-i18n="common.export">导出</button>
     </div>
   </form>

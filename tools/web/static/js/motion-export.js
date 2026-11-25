@@ -1,5 +1,5 @@
 import { $, downloadBlob, downloadFile, el, personColor, safeStem, show } from "./utils.js";
-import { appError, message as m, setText } from "./i18n.js";
+import { appError, message as m, setAttr, setText } from "./i18n.js";
 import * as api from "./api.js";
 import { Vector3 } from 'three';
 import { animatedCameraTransform, pelvisCameraTransform } from './paired-camera.js';
@@ -21,10 +21,15 @@ export function initMotionExport(getBodyVariant, viewer) {
   const vmdTarget = $("vmdTarget"), characterOption = $("vmdTargetCharacter");
   const chooseCharacter = $("vmdChooseCharacter");
   const includeCamera = $('includeCamera');
+  const previewBip = $('previewBip');
+  const bvhTpose = $('bvhTpose');
+  const bvhAsMax = $('bvhAsMax'), bipAsMax = $('bipAsMax');
+  bvhTpose.checked = localStorage.getItem('flowhmr-bvh-tpose') === 'on';
   const formats = [...format.options];
   const currentFbxOption = formats.find(({ value }) => value === "retarget_fbx");
   let preferred = localStorage.getItem(FORMAT_STORAGE);
   if (preferred === "mixamo_iclone") preferred = "mixamo";
+  if (preferred === 'max') preferred = 'bip';
   let result = null, pending = null, entries = [], multiPeople = [], single = false;
   let pairedExport = false, formatChanged = false;
 
@@ -88,6 +93,14 @@ export function initMotionExport(getBodyVariant, viewer) {
     show("fbxReferenceOptions", profile === "flowhmr" || (mixamo && !useActor));
     setText($("fbxSkinHint"), m(useActor ? "export.fbx_target_skin" : "export.skin_hint"));
     show("vmdOptions", profile === "vmd");
+    show('bvhOptions', profile === 'bvh');
+    show('bipMaxOption', profile === 'bip');
+    show(previewBip, profile === 'bip');
+    previewBip.disabled = !!pending || !result;
+    bvhTpose.disabled = !!pending;
+    bvhAsMax.disabled = !!pending || !result?.bvhMax;
+    bipAsMax.disabled = !!pending;
+    setAttr(bvhAsMax.parentElement, 'title', result?.bvhMax ? '' : m('server.bvh_max_unavailable'));
     const roles = targets();
     const cameraSupported = CAMERA_FORMATS.includes(profile);
     show('pairedCameraOptions', cameraSupported);
@@ -198,7 +211,7 @@ export function initMotionExport(getBodyVariant, viewer) {
     sync();
   });
   dialog.querySelector("form").addEventListener("submit", async (event) => {
-    if (event.submitter !== confirm) return;
+    if (event.submitter !== confirm && event.submitter !== previewBip) return;
     event.preventDefault();
     if (!result || confirm.disabled || pending) return;
     const { id } = result;
@@ -257,6 +270,35 @@ export function initMotionExport(getBodyVariant, viewer) {
       downloadFile(api.npzUrl(id));
       return;
     }
+    if (profile === 'bvh' || profile === 'bip') {
+      const asMax = profile === 'bvh' ? result.bvhMax && bvhAsMax.checked : bipAsMax.checked;
+      if (profile === 'bvh') localStorage.setItem('flowhmr-bvh-tpose', bvhTpose.checked ? 'on' : 'off');
+      const operation = pending = new AbortController();
+      showError();
+      sync();
+      try {
+        if (event.submitter === previewBip) {
+          const data = await api.getBipPreview(id, operation.signal);
+          if (pending === operation && result?.id === id && dialog.open) {
+            viewer.showBipPreview(id, data);
+            dialog.close('preview-bip');
+          }
+          return;
+        }
+        const url = new URL(api.motionUrl(id, profile, people), window.location.href);
+        if (profile === 'bvh') url.searchParams.set('prepend_tpose', bvhTpose.checked ? '1' : '0');
+        if (asMax) url.searchParams.set('format', 'max');
+        const exported = await api.getMotionDownload(url.pathname + url.search, operation.signal);
+        if (pending === operation && result?.id === id && dialog.open) {
+          saveExport(new Blob([exported.bytes], { type: exported.type }), exported.filename);
+        }
+      } catch (cause) {
+        if (!operation.signal.aborted && dialog.open) showError(cause);
+      } finally {
+        if (pending === operation) { pending = null; sync(); }
+      }
+      return;
+    }
     if (profile === "vrma" || (profile === "vmd" && !targetVmd && !correctedVmd)) {
       dialog.close("export");
       downloadFile(api.motionUrl(id, profile, people));
@@ -308,9 +350,11 @@ export function initMotionExport(getBodyVariant, viewer) {
 
   return {
     setResult(id, job) {
-      result = { id, filename: job.filename, cameraAvailable: cameraAvailable(cameraStatusForJob(job)) };
+      result = { id, filename: job.filename, cameraAvailable: cameraAvailable(cameraStatusForJob(job)), bvhMax: !!job.has_bvh_max };
       includeCamera.checked = false;
-      const availableByFormat = { vmd: !!job.has_vmd, vrma: !!job.has_vrma, npz: !!job.has_vmd };
+      bvhAsMax.checked = bipAsMax.checked = false;
+      const availableByFormat = { vmd: !!job.has_vmd, vrma: !!job.has_vrma, bvh: !!job.has_bvh,
+        bip: !!job.has_bip, npz: !!job.has_vmd };
       for (const option of formats) option.disabled = !(availableByFormat[option.value] ?? job.has_fbx);
       const available = formats.filter((option) => !option.disabled && option.value!=="retarget_glb");
       format.value = available[0]?.value ?? "";
